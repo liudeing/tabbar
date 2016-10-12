@@ -30,7 +30,7 @@ import java.util.List;
  */
 public class MainNavigateTabBar extends LinearLayout implements View.OnClickListener {
 
-    private static final String KEY_CURRENT_TAG = "com.startsmake.template。currentTag";
+    private static final String KEY_CURRENT_TAG = "com.startsmake.template.currentTag";
 
     private List<ViewHolder> mViewHolderList;
     private OnTabSelectedListener mTabSelectListener;

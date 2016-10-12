@@ -1,16 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<RelativeLayout
-    xmlns:android="http://schemas.android.com/apk/res/android"
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-
-    <FrameLayout
-        android:id="@+id/main_container"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:layout_above="@+id/mainTabBar"/>
 
     <com.handmall.tabbar.widget.MainNavigateTabBar
         android:id="@+id/mainTabBar"
@@ -27,7 +20,8 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_above="@+id/mainTabBar"
-        android:background="@mipmap/comui_bar_top_shadow"/>
+        android:background="@mipmap/comui_bar_top_shadow"
+        android:contentDescription="@string/bar_shadow" />
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -42,6 +36,14 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:onClick="onClickPublish"
-            android:src="@mipmap/comui_tab_post"/>
+            android:src="@mipmap/comui_tab_post"
+            android:contentDescription="@string/tab_post" />
     </LinearLayout>
+
+    <FrameLayout
+        android:id="@+id/main_container"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_alignParentTop="true"
+        android:layout_alignParentStart="true" />
 </RelativeLayout>

@@ -8,6 +8,7 @@ import android.widget.Toast;
 import com.handmall.tabbar.R;
 import com.handmall.tabbar.fragment.CityFragment;
 import com.handmall.tabbar.fragment.HomeFragment;
+import com.handmall.tabbar.fragment.ListViewFragment;
 import com.handmall.tabbar.fragment.MessageFragment;
 import com.handmall.tabbar.fragment.PersonFragment;
 import com.handmall.tabbar.widget.MainNavigateTabBar;
@@ -33,7 +34,7 @@ public class MainActivity extends AppCompatActivity {
 
         mNavigateTabBar.onRestoreInstanceState(savedInstanceState);
 
-        mNavigateTabBar.addTab(HomeFragment.class, new MainNavigateTabBar.TabParam(R.mipmap.comui_tab_home, R.mipmap.comui_tab_home_selected, TAG_PAGE_HOME));
+        mNavigateTabBar.addTab(ListViewFragment.class, new MainNavigateTabBar.TabParam(R.mipmap.comui_tab_home, R.mipmap.comui_tab_home_selected, TAG_PAGE_HOME));
         mNavigateTabBar.addTab(CityFragment.class, new MainNavigateTabBar.TabParam(R.mipmap.comui_tab_city, R.mipmap.comui_tab_city_selected, TAG_PAGE_CITY));
         mNavigateTabBar.addTab(null, new MainNavigateTabBar.TabParam(0, 0, TAG_PAGE_PUBLISH));
         mNavigateTabBar.addTab(MessageFragment.class, new MainNavigateTabBar.TabParam(R.mipmap.comui_tab_message, R.mipmap.comui_tab_message_selected, TAG_PAGE_MESSAGE));
