@@ -20,6 +20,7 @@ import android.widget.ImageView;
 import com.handmall.tabbar.R;
 import com.handmall.tabbar.widget.PullToRefresh.refresh_view.BaseRefreshView;
 import com.handmall.tabbar.widget.PullToRefresh.refresh_view.SunRefreshView;
+import com.handmall.tabbar.widget.PullToRefresh.util.Logger;
 import com.handmall.tabbar.widget.PullToRefresh.util.Utils;
 
 import java.security.InvalidParameterException;
@@ -27,6 +28,9 @@ import java.security.InvalidParameterException;
 public class PullToRefreshView extends ViewGroup {
 
     private static final int DRAG_MAX_DISTANCE = 120;
+    /**
+     * 下拉拖拽阻尼
+     */
     private static final float DRAG_RATE = .5f;
     private static final float DECELERATE_INTERPOLATION_FACTOR = 2f;
 
@@ -39,10 +43,24 @@ public class PullToRefreshView extends ViewGroup {
     private ImageView mRefreshView;
     private Interpolator mDecelerateInterpolator;
     private int mTouchSlop;
+    /**
+     * 触发刷新的下拉距离，也是mRefreshView刷新时停留的高度
+     */
     private int mTotalDragDistance;
     private BaseRefreshView mBaseRefreshView;
+    /**
+     * 下拉进度
+     */
     private float mCurrentDragPercent;
+    /**
+     * mCurrentOffsetTop=mTarget.getTop();内容view的top值
+     */
     private int mCurrentOffsetTop;
+
+    public boolean isRefreshing() {
+        return mRefreshing;
+    }
+
     private boolean mRefreshing;
     private int mActivePointerId;
     private boolean mIsBeingDragged;
@@ -56,6 +74,8 @@ public class PullToRefreshView extends ViewGroup {
     private int mTargetPaddingBottom;
     private int mTargetPaddingRight;
     private int mTargetPaddingLeft;
+
+    private int finishRefreshToPauseDuration = 0;
 
     public PullToRefreshView(Context context) {
         this(context, null);
@@ -77,6 +97,7 @@ public class PullToRefreshView extends ViewGroup {
 
         addView(mRefreshView);
 
+        //在构造函数上加上这句，防止自定义View的onDraw方法不执行的问题
         setWillNotDraw(false);
         ViewCompat.setChildrenDrawingOrderEnabled(this, true);
     }
@@ -109,6 +130,7 @@ public class PullToRefreshView extends ViewGroup {
         super.onMeasure(widthMeasureSpec, heightMeasureSpec);
 
         ensureTarget();
+
         if (mTarget == null)
             return;
 
@@ -135,9 +157,14 @@ public class PullToRefreshView extends ViewGroup {
         }
     }
 
+    /**
+     * 该函数只干两件事
+     * 1.记录手指按下的坐标
+     * 2.判断是否拦截处理事件
+     */
     @Override
     public boolean onInterceptTouchEvent(MotionEvent ev) {
-
+        //如果被禁用、到达顶部、正在刷新时，不拦截点击事件，不做任何处理
         if (!isEnabled() || canChildScrollUp() || mRefreshing) {
             return false;
         }
@@ -145,8 +172,9 @@ public class PullToRefreshView extends ViewGroup {
         final int action = MotionEventCompat.getActionMasked(ev);
 
         switch (action) {
+            //手指按下，记录点击坐标
             case MotionEvent.ACTION_DOWN:
-                setTargetOffsetTop(0, true);
+//                setTargetOffsetTop(0, true);
                 mActivePointerId = MotionEventCompat.getPointerId(ev, 0);
                 mIsBeingDragged = false;
                 final float initialMotionY = getMotionEventY(ev, mActivePointerId);
@@ -164,10 +192,12 @@ public class PullToRefreshView extends ViewGroup {
                     return false;
                 }
                 final float yDiff = y - mInitialMotionY;
+                //如果是滑动动作，将标志mIsBeingDragged置为true
                 if (yDiff > mTouchSlop && !mIsBeingDragged) {
                     mIsBeingDragged = true;
                 }
                 break;
+            //手指松开，标志复位
             case MotionEvent.ACTION_UP:
             case MotionEvent.ACTION_CANCEL:
                 mIsBeingDragged = false;
@@ -178,12 +208,14 @@ public class PullToRefreshView extends ViewGroup {
                 break;
         }
 
+        //如果是正在被下拉拖动，拦截，不往下传递；反之，你懂的
         return mIsBeingDragged;
     }
 
     @Override
     public boolean onTouchEvent(@NonNull MotionEvent ev) {
 
+        //如果不是在被下拉拖动，不处理，直接返回
         if (!mIsBeingDragged) {
             return super.onTouchEvent(ev);
         }
@@ -199,6 +231,7 @@ public class PullToRefreshView extends ViewGroup {
 
                 final float y = MotionEventCompat.getY(ev, pointerIndex);
                 final float yDiff = y - mInitialMotionY;
+                //未松手前,总共下拉的距离 float
                 final float scrollTop = yDiff * DRAG_RATE;
                 mCurrentDragPercent = scrollTop / mTotalDragDistance;
                 if (mCurrentDragPercent < 0) {
@@ -210,49 +243,69 @@ public class PullToRefreshView extends ViewGroup {
                 float tensionSlingshotPercent = Math.max(0,
                         Math.min(extraOS, slingshotDist * 2) / slingshotDist);
                 float tensionPercent = (float) ((tensionSlingshotPercent / 4) - Math.pow(
-                        (tensionSlingshotPercent / 4), 2)) * 2f;
+                        tensionSlingshotPercent / 4, 2)) * 2f;
                 float extraMove = (slingshotDist) * tensionPercent / 2;
+                //未松手前，target下拉的总高度 int
+//                int targetY = (int) scrollTop; //可以替代下面这句代码，效果一样
                 int targetY = (int) ((slingshotDist * boundedDragPercent) + extraMove);
-
+                Logger.d("targetY:" + targetY);
+                Logger.d("scrollTop:" + scrollTop);
                 mBaseRefreshView.setPercent(mCurrentDragPercent, true);
+                if (mListener != null) {
+                    mListener.ondragDistanceChange(scrollTop, mCurrentDragPercent, (scrollTop - mCurrentOffsetTop) / mTotalDragDistance);
+                }
+                //调整更新位置，传过去的值是每次的偏移量
                 setTargetOffsetTop(targetY - mCurrentOffsetTop, true);
                 break;
             }
+            //做多指触控处理
             case MotionEventCompat.ACTION_POINTER_DOWN:
+                //将最后一只按下的手指作为ActivePointer
                 final int index = MotionEventCompat.getActionIndex(ev);
                 mActivePointerId = MotionEventCompat.getPointerId(ev, index);
                 break;
             case MotionEventCompat.ACTION_POINTER_UP:
                 onSecondaryPointerUp(ev);
                 break;
+            //手指松开！
             case MotionEvent.ACTION_UP:
             case MotionEvent.ACTION_CANCEL: {
+                //排除是无关手指
                 if (mActivePointerId == INVALID_POINTER) {
                     return false;
                 }
                 final int pointerIndex = MotionEventCompat.findPointerIndex(ev, mActivePointerId);
                 final float y = MotionEventCompat.getY(ev, pointerIndex);
+                //计算松开瞬间下拉的距离
                 final float overScrollTop = (y - mInitialMotionY) * DRAG_RATE;
+                //标志复位
                 mIsBeingDragged = false;
-                if (overScrollTop > mTotalDragDistance) {
+                mActivePointerId = INVALID_POINTER;
+
+                if (overScrollTop > mTotalDragDistance) {//触发刷新
                     setRefreshing(true, true);
-                } else {
+                } else {//回滚
                     mRefreshing = false;
                     animateOffsetToStartPosition();
                 }
-                mActivePointerId = INVALID_POINTER;
-                return false;
+                return false;//系列点击事件已经处理完，将处理权交还mTarget
             }
         }
 
-        return true;
+        return true;//该系列点击事件未处理完，消耗此系列事件
     }
 
+    /**
+     * 回滚动画
+     */
     private void animateOffsetToStartPosition() {
         mFrom = mCurrentOffsetTop;
         mFromDragPercent = mCurrentDragPercent;
         long animationDuration = Math.abs((long) (MAX_OFFSET_ANIMATION_DURATION * mFromDragPercent));
 
+        //当动画开始，通过applyTransformation(float interpolatedTime, Transformation t)方法的interpolatedTime参数（0.0~1.0）
+        //内部调用setTargetOffsetTop(offset, false);两者更新位置和RefreshView的加载动画
+        //当动画结束时，更新mCurrentOffsetTop=mTarget.getTop();
         mAnimateToStartPosition.reset();
         mAnimateToStartPosition.setDuration(animationDuration);
         mAnimateToStartPosition.setInterpolator(mDecelerateInterpolator);
@@ -265,25 +318,27 @@ public class PullToRefreshView extends ViewGroup {
         mFrom = mCurrentOffsetTop;
         mFromDragPercent = mCurrentDragPercent;
 
+        //动画上调至mTotalDragDistance这个高度
         mAnimateToCorrectPosition.reset();
         mAnimateToCorrectPosition.setDuration(MAX_OFFSET_ANIMATION_DURATION);
         mAnimateToCorrectPosition.setInterpolator(mDecelerateInterpolator);
         mRefreshView.clearAnimation();
         mRefreshView.startAnimation(mAnimateToCorrectPosition);
 
-        if (mRefreshing) {
+        if (mRefreshing) {//开始刷新
             mBaseRefreshView.start();
             if (mNotify) {
                 if (mListener != null) {
                     mListener.onRefresh();
                 }
             }
-        } else {
+        } else {//停止刷新
             mBaseRefreshView.stop();
             animateOffsetToStartPosition();
         }
+        //更新mCurrentOffsetTop
         mCurrentOffsetTop = mTarget.getTop();
-        mTarget.setPadding(mTargetPaddingLeft, mTargetPaddingTop, mTargetPaddingRight, mTotalDragDistance);
+//        mTarget.setPadding(mTargetPaddingLeft, mTargetPaddingTop, mTargetPaddingRight, mTotalDragDistance);
     }
 
     private final Animation mAnimateToStartPosition = new Animation() {
@@ -298,12 +353,16 @@ public class PullToRefreshView extends ViewGroup {
         public void applyTransformation(float interpolatedTime, Transformation t) {
             int targetTop;
             int endTarget = mTotalDragDistance;
-            targetTop = (mFrom + (int) ((endTarget - mFrom) * interpolatedTime));
+            targetTop = mFrom + (int) ((endTarget - mFrom) * interpolatedTime);
             int offset = targetTop - mTarget.getTop();
 
             mCurrentDragPercent = mFromDragPercent - (mFromDragPercent - 1.0f) * interpolatedTime;
             mBaseRefreshView.setPercent(mCurrentDragPercent, false);
-
+            if (mListener != null) {
+                float pos = mFrom + (endTarget - mFrom) * interpolatedTime;
+                mListener.ondragDistanceChange(pos,
+                        mCurrentDragPercent, (pos - mTarget.getTop()) / mTotalDragDistance);
+            }
             setTargetOffsetTop(offset, false /* requires update */);
         }
     };
@@ -311,18 +370,29 @@ public class PullToRefreshView extends ViewGroup {
     private void moveToStart(float interpolatedTime) {
         int targetTop = mFrom - (int) (mFrom * interpolatedTime);
         float targetPercent = mFromDragPercent * (1.0f - interpolatedTime);
+        //计算偏移量
         int offset = targetTop - mTarget.getTop();
 
+        //更新RefreshView加载动画
         mCurrentDragPercent = targetPercent;
         mBaseRefreshView.setPercent(mCurrentDragPercent, true);
-        mTarget.setPadding(mTargetPaddingLeft, mTargetPaddingTop, mTargetPaddingRight, mTargetPaddingBottom + targetTop);
+        if (mListener != null) {
+            float pos = mFrom - mFrom * interpolatedTime;
+            mListener.ondragDistanceChange(pos,
+                    mCurrentDragPercent, (pos - mTarget.getTop()) / mTotalDragDistance);
+        }
+
+        //更新mTarget和mRefreshView的位置
+//        mTarget.setPadding(mTargetPaddingLeft, mTargetPaddingTop, mTargetPaddingRight, mTargetPaddingBottom + targetTop);
         setTargetOffsetTop(offset, false);
+
     }
 
     public void setRefreshing(boolean refreshing) {
         if (mRefreshing != refreshing) {
             setRefreshing(refreshing, false /* notify */);
         }
+
     }
 
     private void setRefreshing(boolean refreshing, final boolean notify) {
@@ -331,15 +401,25 @@ public class PullToRefreshView extends ViewGroup {
             ensureTarget();
             mRefreshing = refreshing;
             if (mRefreshing) {
+                //开始刷新
                 mBaseRefreshView.setPercent(1f, true);
-                animateOffsetToCorrectPosition();
+                animateOffsetToCorrectPosition();//位置上调到合适的位置
             } else {
+                //刷新完成
+                if (mListener!=null)
+                    mListener.onFinish();
+                try {
+                    //停顿半秒
+                    Thread.sleep(finishRefreshToPauseDuration);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
                 animateOffsetToStartPosition();
             }
         }
     }
 
-    private Animation.AnimationListener mToStartListener = new Animation.AnimationListener() {
+    private final Animation.AnimationListener mToStartListener = new Animation.AnimationListener() {
         @Override
         public void onAnimationStart(Animation animation) {
         }
@@ -350,11 +430,14 @@ public class PullToRefreshView extends ViewGroup {
 
         @Override
         public void onAnimationEnd(Animation animation) {
-            mBaseRefreshView.stop();
-            mCurrentOffsetTop = mTarget.getTop();
+            mBaseRefreshView.stop();//停止RefreshView的加载动画
+            mCurrentOffsetTop = mTarget.getTop();//更新mCurrentOffsetTop
         }
     };
 
+    /**
+     * 处理多指触控的点击事件
+     */
     private void onSecondaryPointerUp(MotionEvent ev) {
         final int pointerIndex = MotionEventCompat.getActionIndex(ev);
         final int pointerId = MotionEventCompat.getPointerId(ev, pointerIndex);
@@ -372,6 +455,14 @@ public class PullToRefreshView extends ViewGroup {
         return MotionEventCompat.getY(ev, index);
     }
 
+    /**
+     * 通过调用offsetTopAndBottom方法
+     * 更新mTarget和mBaseRefreshView的位置
+     * 更新target下拉高度--mCurrentOffsetTop
+     *
+     * @param offset         偏移位移
+     * @param requiresUpdate 时候invalidate()
+     */
     private void setTargetOffsetTop(int offset, boolean requiresUpdate) {
         mTarget.offsetTopAndBottom(offset);
         mBaseRefreshView.offsetTopAndBottom(offset);
@@ -410,7 +501,9 @@ public class PullToRefreshView extends ViewGroup {
         int right = getPaddingRight();
         int bottom = getPaddingBottom();
 
+        //mTarget MATCH_PARENT
         mTarget.layout(left, top + mCurrentOffsetTop, left + width - right, top + height - bottom + mCurrentOffsetTop);
+        //mRefreshView隐藏在mTarget的下面
         mRefreshView.layout(left, top, left + width - right, top + height - bottom);
     }
 
@@ -418,9 +511,29 @@ public class PullToRefreshView extends ViewGroup {
         mListener = listener;
     }
 
-    public interface OnRefreshListener {
-        void onRefresh();
+    public void setFinishRefreshToPauseDuration(int finishRefreshToPauseDuration) {
+        this.finishRefreshToPauseDuration = finishRefreshToPauseDuration;
     }
 
-}
+    public interface OnRefreshListener {
+        void onRefresh();
+        /**
+         * 不要在此进行耗时的操作
+         */
+        void onFinish();
+        void ondragDistanceChange(float distance, float percent, float offset);
+    }
 
+    public static class OnRefreshListenerAdapter implements OnRefreshListener{
+        @Override
+        public void onRefresh() {}
+
+        @Override
+        public void onFinish() {
+
+        }
+
+        @Override
+        public void ondragDistanceChange(float distance, float percent, float offset) {}
+    }
+}

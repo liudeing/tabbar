@@ -40,6 +40,17 @@ public class RecyclerViewFragment extends BaseRefreshFragment {
                     }
                 }, REFRESH_DELAY);
             }
+
+            @Override
+            public void onFinish() {
+
+
+            }
+
+            @Override
+            public void ondragDistanceChange(float distance, float percent, float offset) {
+
+            }
         });
 
         return rootView;
