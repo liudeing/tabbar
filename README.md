@@ -1,2 +1,2 @@
 # tabbar
-![image](https://github.com/teulu/tabbar/blob/master/app/src/main/assets/readme1.png)
+![image](https://github.com/teulu/tabbar/blob/master/screenshots/readme1.png)
